@@ -1,4 +1,4 @@
-host = '127.0.0.1'
+host = 'IP'
 user = 'postgres'
-password = '1234'
-db_name = 'bot_users'
+password = 'password'
+db_name = 'db_name'
