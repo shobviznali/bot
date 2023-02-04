@@ -6,6 +6,8 @@ import redis
 import re
 import threading
 from time import sleep
+import psycopg2
+from config import host, user, password, db_name
 
 
 # Тут все переменные, дикты, листы которые используются в приложении.
@@ -51,6 +53,33 @@ help_message = "Вот команды, которые вы можете испо
 dic = []
 list_with_mes_id = []
 
+
+# connecting with datebase
+
+
+
+try:
+    connection = psycopg2.connect(
+        host = host,
+        user = user,
+        password = password,
+        database = db_name
+    )   
+
+    connection.autocommit = True
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                time INTEGER,
+                chat_id INTEGER,
+                mes_with_sked INTEGER,
+                days TEXT);"""
+        )
+
+except Exception as ex:
+    print("[INFO] Error while working with PostgreSQL", ex)
 
 class Users:
     def __init__(self, day: list, time_t: int, chat: int, mes_with_sked: str):
@@ -101,19 +130,17 @@ def settings(message):
 def register(message):
 
     list_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-    new_user = Users(list_days, 8, message.chat.id, 'smth') 
-    # collection.insert_one({
-    #     'user_id': message.from_user.id,
-    #     'days' : list_days,
-    #     'time' : '8',
-    #     'chat_id' : message.chat.id,
-    #     'mes_with_sked' : 'smth',
-    # })
-    if message.from_user.id in all_users:
-        bot.send_message(message.chat.id, "Вы уже зарегистрированы")
-    else:
-        all_users[message.from_user.id] = new_user
-        bot.send_message(message.chat.id, "Вы успешно зарегистровались")
+
+    connection.autocommit = True
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f""" INSERT INTO users(id, time, chat_id, mes_with_sked, days) VALUES
+            ({message.from_user.id}, 8, {message.chat.id}, -1, 'Monday, Tuesday, Wednesday, Thursday, Friday');"""
+            )
+            bot.send_message(message.chat.id, 'Вы успешно зарегистровались')
+    except Exception as ex:
+        bot.send_message(message.chat.id, 'Вы уже зарегистрированы')
 
 # setting time for schedule
 
@@ -121,16 +148,23 @@ def register(message):
 @bot.message_handler(commands=['time'])
 def time(message):
 
-    if message.from_user.id in all_users.keys():
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        button1 = types.KeyboardButton("6 часов")
-        button2 = types.KeyboardButton("10 часов")
-        button3 = types.KeyboardButton("12 часов")
-        markup.add(button1, button2, button3)
-        time_mes = "Выбирайте удобное вам время после написания планнера."
-        bot.send_message(message.chat.id, time_mes, reply_markup=markup)
-    else:
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"""SELECT time FROM users where id = {message.from_user.id}""")     
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            button1 = types.KeyboardButton("6 часов")
+            button2 = types.KeyboardButton("10 часов")
+            button3 = types.KeyboardButton("12 часов")
+            markup.add(button1, button2, button3)
+            time_mes = "Выбирайте удобное вам время после написания планнера."
+            bot.send_message(message.chat.id, time_mes, reply_markup=markup)
+    except Exception as ex:
         bot.send_message(message.chat.id, 'Вы не зарегистрированы')
+    # if message.from_user.id in all_users.keys():
+        
+    # else:
+    #     bot.send_message(message.chat.id, 'Вы не зарегистрированы')
 
 
 @bot.message_handler(commands=['days'])
@@ -215,12 +249,13 @@ def just_text(message):
     # TODO УБРАТЬ ПОЧТИ КОПИРОВАНИЕ И НАПОМНИТЬ РАССКАЗАТЬ
 
     elif message.text in list_with_days:
-        if message.from_user.id in all_users.keys() and message.text:
-            if message.text not in all_users[message.from_user.id].days:
-                all_users[message.from_user.id].days.append(message.text)
-                bot.send_message(message.chat.id, f'Вы успешно добавили {message.text}')
-            else:
-                bot.send_message(message.chat.id, f'У вас уже добавлен {message.text}')
+        pass
+        # if message.from_user.id in all_users.keys() and message.text:
+        #     if message.text not in all_users[message.from_user.id].days:
+        #         all_users[message.from_user.id].days.append(message.text)
+        #         bot.send_message(message.chat.id, f'Вы успешно добавили {message.text}')
+        #     else:
+        #         bot.send_message(message.chat.id, f'У вас уже добавлен {message.text}')
 
     elif message.text == "Нет, я не хочу изменить дни.":
         no_mes = "Хорошо. Бот будет отправлять вам напоминалки каждый будний день."
@@ -230,11 +265,10 @@ def just_text(message):
         bot.send_message(message.chat.id, instruction_mes, parse_mode='html')
 
     elif message.text in list_with_hours.keys():
-        if message.from_user.id in all_users.keys():
+        with connection.cursor() as cursor:
             hour = list_with_hours.get(message.text)
-            all_users[message.from_user.id].time = hour
+            cursor.execute(f"""UPDATE users SET time = {hour} WHERE id = {message.from_user.id}""")
             bot.send_message(message.chat.id, f'Вы изменили время получения напоминалок на {message.text}')
-            print(hour)
 
     # elif message.text == f'https://docs.google.com/spreadsheets/d/{re.search("/d/(.*)/", message.text).group(1)}' \
     #                      f'{re.search("/edit(.*)", message.text).group(0)}':
@@ -249,12 +283,21 @@ def just_text(message):
                 if i != keyWords[j]:
                     pass
                 else:
+                    connection.autocommit = True
+
                     if message.from_user.id in all_users.keys():
-                        time_t = all_users[message.from_user.id].time * 3600 
+                        time_t = 0
+                        # all_users[message.from_user.id].time * 3600 
                         redis.setex(message.id, time_t, reminderMessage)
-                        all_users[message.from_user.id].chat_id = message.chat.id
-                        all_users[message.from_user.id].mes_with_sked = message
-                        list_with_mes_id.append(message.id)
+                        # all_users[message.from_user.id].chat_id = message.chat.id
+                        # all_users[message.from_user.id].mes_with_sked = message
+                        # list_with_mes_id.append(message.id)
+                        try:
+                            with connection.cursor() as cursor:
+                                cursor.execute(f"""UPDATE users SET mes_with_sked = {message.id} 
+                                WHERE id = {message.from_user.id}""")
+                        except Exception as ex:
+                            bot.send_message(message.chat.id, 'Вы не зарегистрированы')
                         y = f"{message.chat.id}"
                         dic.append({y: message.text})
                         json_obj = json.dumps(dic, indent=2, ensure_ascii=False)
