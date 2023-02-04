@@ -25,7 +25,7 @@ list_with_days = ['Понедельник', 'Вторник', 'Среда', 'Ч�
 
 list_with_hours = {"6 часов": 6, "10 часов": 10, "12 часов": 12}
 
-pool = redis.ConnectionPool(host='IP', port=port, db=0)
+pool = redis.ConnectionPool(host='127.0.0.1', port=6379, db=0)
 redis = redis.Redis(connection_pool=pool)
 
 # getting our bots TOKEN
@@ -284,43 +284,40 @@ def just_text(message):
                     pass
                 else:
                     connection.autocommit = True
-
-                    if message.from_user.id in all_users.keys():
-                        time_t = 0
-                        # all_users[message.from_user.id].time * 3600 
-                        redis.setex(message.id, time_t, reminderMessage)
-                        # all_users[message.from_user.id].chat_id = message.chat.id
-                        # all_users[message.from_user.id].mes_with_sked = message
-                        # list_with_mes_id.append(message.id)
-                        try:
-                            with connection.cursor() as cursor:
-                                cursor.execute(f"""UPDATE users SET mes_with_sked = {message.id} 
-                                WHERE id = {message.from_user.id}""")
-                        except Exception as ex:
-                            bot.send_message(message.chat.id, 'Вы не зарегистрированы')
-                        y = f"{message.chat.id}"
-                        dic.append({y: message.text})
-                        json_obj = json.dumps(dic, indent=2, ensure_ascii=False)
-                        with open('bd.json', 'w') as outfile:
-                            outfile.write(json_obj)
-                        bot.reply_to(message, 'Добавлен!')
-                    else:
-                        bot.send_message(message.chat.id, "Вы не зарегистрированы")
+                    try:
+                        with connection.cursor() as cursor:
+                            cursor.execute(f"""UPDATE users SET mes_with_sked = {message.id} 
+                            WHERE id = {message.from_user.id}""")
+                        with connection.cursor() as cursor2:
+                            cursor2.execute(f"""SELECT time FROM users WHERE id = {message.from_user.id}""")
+                            time_for_sked = cursor2.fetchone()[0] * 3600
+                            redis.setex(message.id, time_for_sked, reminderMessage)    
+                            bot.reply_to(message, 'Добавлен!')
+                    except Exception as ex:
+                        bot.send_message(message.chat.id, 'Вы не зарегистрированы')
+                
 
 
 def answer():
     while True:
-        for user in all_users.keys():
-            for mes_id in list_with_mes_id:
-                if redis.ttl(mes_id) == -2:
-                    list_with_mes_id.remove(mes_id)
-                    print('smth')
-                    if datetime.today().strftime(f"%A") in all_users[user].days:
-                        bot.reply_to(all_users[user].mes_with_sked, reminderMessage)
-                        print('smth1')
-                    else:
-                        print(datetime.today().strftime("%A"))
-                        bot.reply_to(all_users[user].mes_with_sked, notYourDayReminder)
+        with connection.cursor() as cursor:
+            cursor.execute(f"""SELECT mes_with_sked FROM users""")
+            with connection.cursor() as cursor2:
+                cursor2.execute(f"""SELECT chat_id FROM users""")
+                for mes_id in range(len(cursor.fetchall())):
+                    if redis.ttl(mes_id) == -2:
+                        bot.send_message(cursor2.fetchone()[0], 'something')
+        # for user in all_users.keys():
+        #     for mes_id in list_with_mes_id:
+        #         if redis.ttl(mes_id) == -2:
+        #             list_with_mes_id.remove(mes_id)
+        #             print('smth')
+        #             if datetime.today().strftime(f"%A") in all_users[user].days:
+        #                 bot.reply_to(all_users[user].mes_with_sked, reminderMessage)
+        #                 print('smth1')
+        #             else:
+        #                 print(datetime.today().strftime("%A"))
+        #                 bot.reply_to(all_users[user].mes_with_sked, notYourDayReminder)
 
 
 thread_for_answering = threading.Thread(target=answer, args=(), daemon=True)
