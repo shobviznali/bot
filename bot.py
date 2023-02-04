@@ -25,11 +25,11 @@ list_with_days = ['Понедельник', 'Вторник', 'Среда', 'Ч�
 
 list_with_hours = {"6 часов": 6, "10 часов": 10, "12 часов": 12}
 
-pool = redis.ConnectionPool(host='127.0.0.1', port=6379, db=0)
+pool = redis.ConnectionPool(host='IP', port=port, db=0)
 redis = redis.Redis(connection_pool=pool)
 
 # getting our bots TOKEN
-bot = telebot.TeleBot('5681996034:AAFpFl2Lr4QucJF2GSgNfCFU19RE5xMR_zI')
+bot = telebot.TeleBot('TOKEN')
 
 keyWords = ['#sked']
 
