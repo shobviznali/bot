@@ -8,6 +8,7 @@ import threading
 from time import sleep
 import psycopg2
 from config import host, user, password, db_name
+import ast
 
 
 # Тут все переменные, дикты, листы которые используются в приложении.
@@ -25,11 +26,13 @@ list_with_days = ['Понедельник', 'Вторник', 'Среда', 'Ч�
 
 list_with_hours = {"6 часов": 6, "10 часов": 10, "12 часов": 12}
 
+
 pool = redis.ConnectionPool(host='127.0.0.1', port=6379, db=0)
+
 redis = redis.Redis(connection_pool=pool)
 
 # getting our bots TOKEN
-bot = telebot.TeleBot('TOKEN')
+bot = telebot.TeleBot('5681996034:AAFpFl2Lr4QucJF2GSgNfCFU19RE5xMR_zI')
 
 keyWords = ['#sked']
 
@@ -51,12 +54,10 @@ help_message = "Вот команды, которые вы можете испо
                "/keywords - добавить новое ключевое слово"
 
 dic = []
-list_with_mes_id = []
+dict_with_mes_id = {}
 
 
 # connecting with datebase
-
-
 
 try:
     connection = psycopg2.connect(
@@ -71,10 +72,11 @@ try:
     with connection.cursor() as cursor:
         cursor.execute(
             """CREATE TABLE users(
-                id INTEGER PRIMARY KEY,
+                id INTEGER not null PRIMARY KEY,
+                mes_id INTEGER,
                 time INTEGER,
                 chat_id INTEGER,
-                mes_with_sked INTEGER,
+                mes_with_sked TEXT,
                 days TEXT);"""
         )
 
@@ -136,12 +138,12 @@ def register(message):
         with connection.cursor() as cursor:
             cursor.execute(
                 f""" INSERT INTO users(id, time, chat_id, mes_with_sked, days) VALUES
-            ({message.from_user.id}, 8, {message.chat.id}, -1, 'Monday, Tuesday, Wednesday, Thursday, Friday');"""
+            ({message.from_user.id}, 8, {message.chat.id}, 'smth', 'Monday, Tuesday, Wednesday, Thursday, Friday');"""
             )
             bot.send_message(message.chat.id, 'Вы успешно зарегистровались')
     except Exception as ex:
         bot.send_message(message.chat.id, 'Вы уже зарегистрированы')
-
+        print(ex)
 # setting time for schedule
 
 
@@ -283,30 +285,92 @@ def just_text(message):
                 if i != keyWords[j]:
                     pass
                 else:
+                    # json_object = json.dumps(str(message), indent = 0)
                     connection.autocommit = True
+                    some_str = str(message)
+                    d_json = json.dumps(some_str)
                     try:
+                        with connection.cursor() as cursor3:
+                            cursor3.execute(f"UPDATE users SET mes_id = {message.id} WHERE id = {message.from_user.id}")
                         with connection.cursor() as cursor:
-                            cursor.execute(f"""UPDATE users SET mes_with_sked = {message.id} 
-                            WHERE id = {message.from_user.id}""")
+                            cursor.execute(f"""UPDATE users SET mes_with_sked = '{json.dumps(message.json)}::text' WHERE id = {message.from_user.id}""")
+                            cursor.execute(f"""SELECT mes_with_sked FROM users WHERE id = {message.from_user.id}""")
+                            bot.reply_to(cursor.fetchone()[0], 'lala')
+                        
+                            
                         with connection.cursor() as cursor2:
-                            cursor2.execute(f"""SELECT time FROM users WHERE id = {message.from_user.id}""")
-                            time_for_sked = cursor2.fetchone()[0] * 3600
-                            redis.setex(message.id, time_for_sked, reminderMessage)    
+                            cursor2.execute(f"SELECT time FROM users WHERE id = {message.from_user.id}")
+                            time_for_sked = cursor2.fetchone()[0] * 2
+                            redis.setex(message.id, time_for_sked, f'{message.from_user.username}')    
                             bot.reply_to(message, 'Добавлен!')
                     except Exception as ex:
                         bot.send_message(message.chat.id, 'Вы не зарегистрированы')
-                
+                        print(ex)
 
 
-def answer():
-    while True:
-        with connection.cursor() as cursor:
-            cursor.execute(f"""SELECT mes_with_sked FROM users""")
-            with connection.cursor() as cursor2:
-                cursor2.execute(f"""SELECT chat_id FROM users""")
-                for mes_id in range(len(cursor.fetchall())):
-                    if redis.ttl(mes_id) == -2:
-                        bot.send_message(cursor2.fetchone()[0], 'something')
+
+# def answer():
+#     while True:
+#         chat = ''
+#         id = ''
+#         username = ''
+#         id_m = 0
+#         try:
+#             with connection.cursor() as cursor:
+#                 cursor.execute(f"SELECT id FROM users")
+#                 for i in cursor.fetchall():
+#                     with connection.cursor() as cursor2:
+#                         cursor2.execute(f"SELECT mes_with_sked FROM users WHERE id = {i[0]}")
+#                         username = cursor2.fetchone()
+#                     with connection.cursor() as cursor3:
+#                         cursor3.execute(f"SELECT chat_id FROM users WHERE id = {i[0]}")
+#                         chat = cursor3.fetchone()
+#                     with connection.cursor() as cursor4:
+#                         cursor4.execute(f"SELECT mes_id FROM users WHERE id = {i[0]}")
+#                         id_m = cursor4.fetchone()
+#                         # print(cursor4.fetchone()[0])
+#                         if redis.ttl(id_m[0]) == -2:
+#                             bot.send_message(chat[0], 'lala')
+#                             # print()
+#         except Exception as ex:
+#             print(ex)
+
+# iteration = 0
+
+# def answer():
+#     while True:
+#         with connection.cursor() as cursor:
+#             cursor.execute(f"""SELECT id FROM users""")
+#             for i in range(len(cursor.fetchall)):
+#                 with connection.cursor2() as cursor2:
+#                     cursor2.execute(f"""SELECT mes_with_sked FROM users WHERE id = {cursor.fetchone()}""")
+
+# # def answer():
+# #     while True:
+#         with connection.cursor() as cursor:
+#             cursor.execute("""SELECT chat_id FROM users""")
+#             print(cursor.fetchone()[0])
+#             for key in redis.scan_iter():
+#                 if redis.ttl(key) == -2:
+#                     bot.send_message(cursor.fetchone()[0], "Пора ответить за скед ")
+        # for key, value in dict_with_mes_id.items():
+        #     if redis.ttl(key) == -2:
+        #         bot.reply_to(value, 'smth')
+        # for key in dict_with_mes_id.keys():
+        #     iteration = 0
+        #     if redis.ttl(key) == -2:
+        #         bot.reply_to(dict_with_mes_id[key], 'smth')
+        #         iteration = 1
+        #         if iteration == 1:
+        #             dict_with_mes_id
+        #             break
+        # # with connection.cursor() as cursor:
+        # #     cursor.execute(f"""SELECT mes_with_sked FROM users""")
+        # with connection.cursor() as cursor2:
+        #     cursor2.execute(f"""SELECT chat_id FROM users""")
+        #     for mes_id in list_with_mes_id:
+        #         if redis.ttl(mes_id) == -2:
+        #             bot.send_message(cursor2.fetchone()[0], 'something')
         # for user in all_users.keys():
         #     for mes_id in list_with_mes_id:
         #         if redis.ttl(mes_id) == -2:
@@ -320,7 +384,7 @@ def answer():
         #                 bot.reply_to(all_users[user].mes_with_sked, notYourDayReminder)
 
 
-thread_for_answering = threading.Thread(target=answer, args=(), daemon=True)
-thread_for_answering.start()
+# thread_for_answering = threading.Thread(target=answer, args=(), daemon=True)
+# thread_for_answering.start()
 
 bot.polling(none_stop=True)
