@@ -13,7 +13,6 @@ import ast
 
 # Тут все переменные, дикты, листы которые используются в приложении.
 
-
 reminderMessage = 'Время ответить за скед!!'
 notYourDayReminder = 'Вообще ты мог сегодня не писать, но раз уж написал - ответь за скед!'
 
@@ -61,10 +60,13 @@ dict_with_mes_id = {}
 
 try:
     connection = psycopg2.connect(
+        dsn=None, 
+        connection_factory=None, 
+        cursor_factory=None,
         host = host,
         user = user,
         password = password,
-        database = db_name
+        database = db_name,
     )   
 
     connection.autocommit = True
@@ -72,16 +74,20 @@ try:
     with connection.cursor() as cursor:
         cursor.execute(
             """CREATE TABLE users(
-                id INTEGER not null PRIMARY KEY,
-                mes_id INTEGER,
-                time INTEGER,
-                chat_id INTEGER,
-                mes_with_sked TEXT,
-                days TEXT);"""
+                id INTEGER not null PRIMARY KEY
+                );"""
         )
 
 except Exception as ex:
     print("[INFO] Error while working with PostgreSQL", ex)
+
+
+# def is_registered(message):
+#     # chech if user is registered TODO
+#     cursor.execute("SELECT COUNT(*) FROM your_table WHERE chat_id = %s;", (message.chat_id,))
+#     count = cursor.fetchone()[0]
+#     connection.close()
+#     return count > 0
 
 class Users:
     def __init__(self, day: list, time_t: int, chat: int, mes_with_sked: str):
@@ -131,38 +137,32 @@ def settings(message):
 @bot.message_handler(commands=['register'])
 def register(message):
 
-    list_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-
     connection.autocommit = True
+    list_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f""" INSERT INTO users(id, time, chat_id, mes_with_sked, days) VALUES
-            ({message.from_user.id}, 8, {message.chat.id}, 'smth', 'Monday, Tuesday, Wednesday, Thursday, Friday');"""
+                f""" INSERT INTO users(id) VALUES
+            ({message.from_user.id});"""
             )
+            new_user = Users(list_days, 8, message.chat.id, 'smth')
+            all_users[message.from_user.id] = new_user
             bot.send_message(message.chat.id, 'Вы успешно зарегистровались')
     except Exception as ex:
+        if message.from_user.id not in all_users:
+            new_user = Users(list_days, 8, message.chat.id, 'smth')
+            all_users[message.from_user.id] = new_user
         bot.send_message(message.chat.id, 'Вы уже зарегистрированы')
         print(ex)
+
+    
+    
 # setting time for schedule
 
 
 @bot.message_handler(commands=['time'])
 def time(message):
-
-
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(f"""SELECT time FROM users where id = {message.from_user.id}""")     
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            button1 = types.KeyboardButton("6 часов")
-            button2 = types.KeyboardButton("10 часов")
-            button3 = types.KeyboardButton("12 часов")
-            markup.add(button1, button2, button3)
-            time_mes = "Выбирайте удобное вам время после написания планнера."
-            bot.send_message(message.chat.id, time_mes, reply_markup=markup)
-    except Exception as ex:
-        bot.send_message(message.chat.id, 'Вы не зарегистрированы')
+    pass
     # if message.from_user.id in all_users.keys():
         
     # else:
@@ -286,26 +286,7 @@ def just_text(message):
                     pass
                 else:
                     # json_object = json.dumps(str(message), indent = 0)
-                    connection.autocommit = True
-                    some_str = str(message)
-                    d_json = json.dumps(some_str)
-                    try:
-                        with connection.cursor() as cursor3:
-                            cursor3.execute(f"UPDATE users SET mes_id = {message.id} WHERE id = {message.from_user.id}")
-                        with connection.cursor() as cursor:
-                            cursor.execute(f"""UPDATE users SET mes_with_sked = '{json.dumps(message.json)}::text' WHERE id = {message.from_user.id}""")
-                            cursor.execute(f"""SELECT mes_with_sked FROM users WHERE id = {message.from_user.id}""")
-                            bot.reply_to(cursor.fetchone()[0], 'lala')
-                        
-                            
-                        with connection.cursor() as cursor2:
-                            cursor2.execute(f"SELECT time FROM users WHERE id = {message.from_user.id}")
-                            time_for_sked = cursor2.fetchone()[0] * 2
-                            redis.setex(message.id, time_for_sked, f'{message.from_user.username}')    
-                            bot.reply_to(message, 'Добавлен!')
-                    except Exception as ex:
-                        bot.send_message(message.chat.id, 'Вы не зарегистрированы')
-                        print(ex)
+                    pass
 
 
 
