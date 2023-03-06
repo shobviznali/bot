@@ -1,17 +1,26 @@
 version: '3'
 
 services:
-  app: 
-    build: C:\Users\Karo\Desktop\Bot  
-  postgres:
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: Users
     ports:
       - "5432:5432"
-    environment:  
-      - POSTGRES_PASSWORD=1234
-      - POSTGRES_USER=postgres
-      - POSTGRES_DB=bot_users
-    image: postgres
+  
   redis:
     ports:
       - "6379:6379"
+    restart: always
     image: redis
+
+  app: 
+    build: C:\Users\Karo\Desktop\Bot\Bot
+    environment:
+      DATABASE_URL: postgresql://postgres:1234@db/Users
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
