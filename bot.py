@@ -8,7 +8,7 @@ import threading
 from time import sleep
 import psycopg2
 from config import host, user, password, db_name
-import ast
+import os
 
 
 # Тут все переменные, дикты, листы которые используются в приложении.
@@ -23,7 +23,7 @@ all_users = {}
 
 list_with_days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
 
-list_with_hours = {"6 часов": 6, "10 часов": 10, "12 часов": 12}
+list_with_hours = {"6 часов":    6, "10 часов": 10, "12 часов": 12}
 
 
 pool = redis.ConnectionPool(host='127.0.0.1', port=6379, db=0)
@@ -60,13 +60,10 @@ dict_with_mes_id = {}
 
 try:
     connection = psycopg2.connect(
-        dsn=None, 
-        connection_factory=None, 
-        cursor_factory=None,
-        host = host,
-        user = user,
-        password = password,
-        database = db_name,
+        host=host,
+        user=user,
+        password=password,
+        database=db_name,
     )   
 
     connection.autocommit = True
@@ -74,7 +71,8 @@ try:
     with connection.cursor() as cursor:
         cursor.execute(
             """CREATE TABLE users(
-                id INTEGER not null PRIMARY KEY
+                id INTEGER not null PRIMARY KEY,
+                time INTEGER
                 );"""
         )
 
@@ -82,12 +80,28 @@ except Exception as ex:
     print("[INFO] Error while working with PostgreSQL", ex)
 
 
-# def is_registered(message):
-#     # chech if user is registered TODO
-#     cursor.execute("SELECT COUNT(*) FROM your_table WHERE chat_id = %s;", (message.chat_id,))
-#     count = cursor.fetchone()[0]
-#     connection.close()
-#     return count > 0
+try:
+    connection = psycopg2.connect(
+        host=host,
+        user=user,
+        password=password,
+        database=db_name,
+    )   
+
+    connection.autocommit = True
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """CREATE TABLE skeds(
+                id INTEGER,        
+                chat_id BIGINT, 
+                mes_id BIGINT
+                );"""
+        )
+
+except Exception as ex:
+    print("[INFO] Error while working with PostgreSQL", ex)
+
 
 class Users:
     def __init__(self, day: list, time_t: int, chat: int, mes_with_sked: str):
@@ -121,6 +135,15 @@ def how_to_use(message):
 
 # command to change settings
 
+@bot.message_handler(commands=['update_chat'])
+def update_chat_id(message):
+    
+    try:
+        with connection.cursor() as cursor:
+            print(message.chat.id)
+            cursor.execute(f"UPDATE users SET chat_id = {message.chat.id} WHERE id = {message.from_user.id}")
+    except Exception as ex:
+        print(ex)
 
 @bot.message_handler(commands=['settings'])
 def settings(message):
@@ -138,20 +161,15 @@ def settings(message):
 def register(message):
 
     connection.autocommit = True
-    list_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    # list_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f""" INSERT INTO users(id) VALUES
-            ({message.from_user.id});"""
+                f""" INSERT INTO users(id, time) VALUES
+            ({message.from_user.id}, 8);"""
             )
-            new_user = Users(list_days, 8, message.chat.id, 'smth')
-            all_users[message.from_user.id] = new_user
             bot.send_message(message.chat.id, 'Вы успешно зарегистровались')
     except Exception as ex:
-        if message.from_user.id not in all_users:
-            new_user = Users(list_days, 8, message.chat.id, 'smth')
-            all_users[message.from_user.id] = new_user
         bot.send_message(message.chat.id, 'Вы уже зарегистрированы')
         print(ex)
 
@@ -162,11 +180,18 @@ def register(message):
 
 @bot.message_handler(commands=['time'])
 def time(message):
-    pass
-    # if message.from_user.id in all_users.keys():
-        
-    # else:
-    #     bot.send_message(message.chat.id, 'Вы не зарегистрированы')
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"""SELECT time FROM users where id = {message.from_user.id}""")     
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            button1 = types.KeyboardButton("6 часов")
+            button2 = types.KeyboardButton("10 часов")
+            button3 = types.KeyboardButton("12 часов")
+            markup.add(button1, button2, button3)
+            time_mes = "Выбирайте удобное вам время после написания планнера."
+            bot.send_message(message.chat.id, time_mes, reply_markup=markup)
+    except Exception as ex:
+        bot.send_message(message.chat.id, 'Вы не зарегистрированы')
 
 
 @bot.message_handler(commands=['days'])
@@ -286,86 +311,48 @@ def just_text(message):
                     pass
                 else:
                     # json_object = json.dumps(str(message), indent = 0)
-                    pass
+                    connection.autocommit = True
+                    time_t = 0
+                    try:
+                        with connection.cursor() as cursor:
+                            cursor.execute(f"""INSERT INTO skeds (id, chat_id, mes_id) VALUES(
+                            {message.from_user.id}, {message.chat.id}, {message.message_id})""")
+                        with connection.cursor() as cursor2:
+                            cursor2.execute(f"""SELECT time FROM users WHERE id = {message.from_user.id}""")
+                            time_t = cursor2.fetchone()[0] * 3600
+                            print(time_t)
+                            redis.setex(message.message_id, time_t, message.from_user.id)
+                            bot.send_message(message.chat.id, "Добавлен!")
+                    except Exception as ex:
+                            bot.send_message(message.chat.id, f'Вы не зарегистрированы {ex}')
+                
+
+#TODO NOT TODO BUT IT'S HERE
+
+def answer():
+    while True:
+        skeds = set()
+        for i in redis.scan_iter():
+            skeds.add(i)
+        for i in skeds:
+            try:
+                with connection.cursor() as cursor5:
+                    cursor5.execute(f"""SELECT chat_id FROM skeds WHERE mes_id = {int(i)}""")
+                    chat_id = cursor5.fetchone()[0]
+                    if redis.exists(i):
+
+                        pass
+                    else:
+                        bot.send_message(chat_id, 'blablalba', reply_to_message_id=int(i))
+                        with connection.cursor() as cursor6:
+                            cursor6.execute(f"""DELETE FROM skeds where mes_id = {int(i)}""")
+            except Exception as ex:
+                print(f'Вы не зарегистрированы {ex}')
 
 
 
-# def answer():
-#     while True:
-#         chat = ''
-#         id = ''
-#         username = ''
-#         id_m = 0
-#         try:
-#             with connection.cursor() as cursor:
-#                 cursor.execute(f"SELECT id FROM users")
-#                 for i in cursor.fetchall():
-#                     with connection.cursor() as cursor2:
-#                         cursor2.execute(f"SELECT mes_with_sked FROM users WHERE id = {i[0]}")
-#                         username = cursor2.fetchone()
-#                     with connection.cursor() as cursor3:
-#                         cursor3.execute(f"SELECT chat_id FROM users WHERE id = {i[0]}")
-#                         chat = cursor3.fetchone()
-#                     with connection.cursor() as cursor4:
-#                         cursor4.execute(f"SELECT mes_id FROM users WHERE id = {i[0]}")
-#                         id_m = cursor4.fetchone()
-#                         # print(cursor4.fetchone()[0])
-#                         if redis.ttl(id_m[0]) == -2:
-#                             bot.send_message(chat[0], 'lala')
-#                             # print()
-#         except Exception as ex:
-#             print(ex)
 
-# iteration = 0
-
-# def answer():
-#     while True:
-#         with connection.cursor() as cursor:
-#             cursor.execute(f"""SELECT id FROM users""")
-#             for i in range(len(cursor.fetchall)):
-#                 with connection.cursor2() as cursor2:
-#                     cursor2.execute(f"""SELECT mes_with_sked FROM users WHERE id = {cursor.fetchone()}""")
-
-# # def answer():
-# #     while True:
-#         with connection.cursor() as cursor:
-#             cursor.execute("""SELECT chat_id FROM users""")
-#             print(cursor.fetchone()[0])
-#             for key in redis.scan_iter():
-#                 if redis.ttl(key) == -2:
-#                     bot.send_message(cursor.fetchone()[0], "Пора ответить за скед ")
-        # for key, value in dict_with_mes_id.items():
-        #     if redis.ttl(key) == -2:
-        #         bot.reply_to(value, 'smth')
-        # for key in dict_with_mes_id.keys():
-        #     iteration = 0
-        #     if redis.ttl(key) == -2:
-        #         bot.reply_to(dict_with_mes_id[key], 'smth')
-        #         iteration = 1
-        #         if iteration == 1:
-        #             dict_with_mes_id
-        #             break
-        # # with connection.cursor() as cursor:
-        # #     cursor.execute(f"""SELECT mes_with_sked FROM users""")
-        # with connection.cursor() as cursor2:
-        #     cursor2.execute(f"""SELECT chat_id FROM users""")
-        #     for mes_id in list_with_mes_id:
-        #         if redis.ttl(mes_id) == -2:
-        #             bot.send_message(cursor2.fetchone()[0], 'something')
-        # for user in all_users.keys():
-        #     for mes_id in list_with_mes_id:
-        #         if redis.ttl(mes_id) == -2:
-        #             list_with_mes_id.remove(mes_id)
-        #             print('smth')
-        #             if datetime.today().strftime(f"%A") in all_users[user].days:
-        #                 bot.reply_to(all_users[user].mes_with_sked, reminderMessage)
-        #                 print('smth1')
-        #             else:
-        #                 print(datetime.today().strftime("%A"))
-        #                 bot.reply_to(all_users[user].mes_with_sked, notYourDayReminder)
-
-
-# thread_for_answering = threading.Thread(target=answer, args=(), daemon=True)
-# thread_for_answering.start()
+thread_for_answering = threading.Thread(target=answer, args=(), daemon=True)
+thread_for_answering.start()
 
 bot.polling(none_stop=True)
