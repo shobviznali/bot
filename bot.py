@@ -31,7 +31,7 @@ pool = redis.ConnectionPool(host='127.0.0.1', port=6379, db=0)
 redis = redis.Redis(connection_pool=pool)
 
 # getting our bots TOKEN
-bot = telebot.TeleBot('5681996034:AAFpFl2Lr4QucJF2GSgNfCFU19RE5xMR_zI')
+bot = telebot.TeleBot('')
 
 keyWords = ['#sked']
 
