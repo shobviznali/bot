@@ -1,6 +1,6 @@
 import telebot
 import json
-from datetime import datetime
+from datetime import date
 from telebot import types
 import redis
 import re
@@ -9,9 +9,13 @@ from time import sleep
 import psycopg2
 from config import host, user, password, db_name
 import os
+import gsheet
 
 
 # Тут все переменные, дикты, листы которые используются в приложении.
+
+
+gs = gsheet.GoogleSheet()
 
 reminderMessage = 'Время ответить за скед!!'
 notYourDayReminder = 'Вообще ты мог сегодня не писать, но раз уж написал - ответь за скед!'
@@ -31,7 +35,7 @@ pool = redis.ConnectionPool(host='127.0.0.1', port=6379, db=0)
 redis = redis.Redis(connection_pool=pool)
 
 # getting our bots TOKEN
-bot = telebot.TeleBot('')
+bot = telebot.TeleBot('5681996034:AAFpFl2Lr4QucJF2GSgNfCFU19RE5xMR_zI')
 
 keyWords = ['#sked']
 
@@ -168,6 +172,11 @@ def register(message):
                 f""" INSERT INTO users(id, time) VALUES
             ({message.from_user.id}, 8);"""
             )
+            if message.from_user.last_name is not None:
+                identifier = message.from_user.first_name + '' + message.from_user.last_name
+                gs.update_glider(identifier, date.today())
+            else:
+                gs.update_glider(message.from_user.first_name, date.today())
             bot.send_message(message.chat.id, 'Вы успешно зарегистровались')
     except Exception as ex:
         bot.send_message(message.chat.id, 'Вы уже зарегистрированы')
@@ -317,9 +326,11 @@ def just_text(message):
                         with connection.cursor() as cursor:
                             cursor.execute(f"""INSERT INTO skeds (id, chat_id, mes_id) VALUES(
                             {message.from_user.id}, {message.chat.id}, {message.message_id})""")
+                            name = message.from_user.first_name + '' + message.from_user.last_name
+                            gs.update_text_for_user(name, message.text)
                         with connection.cursor() as cursor2:
                             cursor2.execute(f"""SELECT time FROM users WHERE id = {message.from_user.id}""")
-                            time_t = cursor2.fetchone()[0] * 3600
+                            time_t = cursor2.fetchone()[0] * 1
                             print(time_t)
                             redis.setex(message.message_id, time_t, message.from_user.id)
                             bot.send_message(message.chat.id, "Добавлен!")
@@ -330,26 +341,21 @@ def just_text(message):
 #TODO NOT TODO BUT IT'S HERE
 
 def answer():
+
     while True:
-        skeds = set()
-        for i in redis.scan_iter():
-            skeds.add(i)
-        for i in skeds:
+        keys = redis.keys('*')
+        for i in keys:
             try:
                 with connection.cursor() as cursor5:
                     cursor5.execute(f"""SELECT chat_id FROM skeds WHERE mes_id = {int(i)}""")
                     chat_id = cursor5.fetchone()[0]
-                    if redis.exists(i):
-
-                        pass
-                    else:
+                    if not redis.exists(i):
+                        print(i)
                         bot.send_message(chat_id, 'blablalba', reply_to_message_id=int(i))
                         with connection.cursor() as cursor6:
                             cursor6.execute(f"""DELETE FROM skeds where mes_id = {int(i)}""")
             except Exception as ex:
                 print(f'Вы не зарегистрированы {ex}')
-
-
 
 
 thread_for_answering = threading.Thread(target=answer, args=(), daemon=True)
