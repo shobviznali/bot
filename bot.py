@@ -1,5 +1,4 @@
 import telebot
-import json
 from datetime import date
 from telebot import types
 import redis
@@ -8,12 +7,12 @@ import threading
 from time import sleep
 import psycopg2
 from config import host, user, password, db_name
-import os
 import gsheet
-
+import os
 
 # Тут все переменные, дикты, листы которые используются в приложении.
 
+#TODO перенести на другой файл
 
 gs = gsheet.GoogleSheet()
 
@@ -27,14 +26,14 @@ all_users = {}
 
 list_with_days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
 
-list_with_hours = {"6 часов":    6, "10 часов": 10, "12 часов": 12}
-
-
+list_with_hours = {"6 часов": 6, "10 часов": 10, "12 часов": 12}
+list_with_sked_hours = {"Обнови на 5" : 5, "Обнови на 6" : 6, "Обнови на 7" : 7, "Обнови на 8" : 8, "Обнови на 9" : 9, "Обнови на 10" : 10}
 pool = redis.ConnectionPool(host='127.0.0.1', port=6379, db=0)
 
 redis = redis.Redis(connection_pool=pool)
 
 # getting our bots TOKEN
+
 bot = telebot.TeleBot('5681996034:AAFpFl2Lr4QucJF2GSgNfCFU19RE5xMR_zI')
 
 keyWords = ['#sked']
@@ -59,7 +58,6 @@ help_message = "Вот команды, которые вы можете испо
 dic = []
 dict_with_mes_id = {}
 
-
 # connecting with datebase
 
 try:
@@ -68,7 +66,7 @@ try:
         user=user,
         password=password,
         database=db_name,
-    )   
+    )
 
     connection.autocommit = True
 
@@ -83,14 +81,13 @@ try:
 except Exception as ex:
     print("[INFO] Error while working with PostgreSQL", ex)
 
-
 try:
     connection = psycopg2.connect(
         host=host,
         user=user,
         password=password,
         database=db_name,
-    )   
+    )
 
     connection.autocommit = True
 
@@ -115,6 +112,7 @@ class Users:
         self.chat_id = chat
         self.mes = mes_with_sked
 
+
 # start command
 
 
@@ -130,24 +128,30 @@ def start(message):
 def sheet(message):
     bot.send_message(message.chat.id, 'Отправьте ссылку на гугл таблицу')
 
+
 # how to use bot
 
+
+@bot.message_handler(commands=['update_current'])
+def update_current(message):
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    bot.send_message(message.chat.id, 'Через сколько вы хотите получить напоминание?', reply_markup=markup)
+
+    button1 = types.KeyboardButton("Обнови на 5")
+    button2 = types.KeyboardButton("Обнови на 6")
+    button3 = types.KeyboardButton("Обнови на 7")
+    button4 = types.KeyboardButton("Обнови на 8")
+    button5 = types.KeyboardButton("Обнови на 9")
+    button6 = types.KeyboardButton("Обнови на 10")
+    markup.add(button1, button2, button3, button4, button5, button6)
 
 @bot.message_handler(commands=['how_to_use'])
 def how_to_use(message):
     bot.send_message(message.chat.id, how_to_use_message, parse_mode='html')
 
-# command to change settings
 
-@bot.message_handler(commands=['update_chat'])
-def update_chat_id(message):
-    
-    try:
-        with connection.cursor() as cursor:
-            print(message.chat.id)
-            cursor.execute(f"UPDATE users SET chat_id = {message.chat.id} WHERE id = {message.from_user.id}")
-    except Exception as ex:
-        print(ex)
+# command to change settings
 
 @bot.message_handler(commands=['settings'])
 def settings(message):
@@ -158,12 +162,12 @@ def settings(message):
     markup.add(button1, button2, button3)
     bot.send_message(message.chat.id, f'Выбирайте, что хотите настроить.', reply_markup=markup)
 
+
 # command to add yourself to users
 
 
 @bot.message_handler(commands=['register'])
 def register(message):
-
     connection.autocommit = True
     # list_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
     try:
@@ -182,8 +186,7 @@ def register(message):
         bot.send_message(message.chat.id, 'Вы уже зарегистрированы')
         print(ex)
 
-    
-    
+
 # setting time for schedule
 
 
@@ -191,7 +194,7 @@ def register(message):
 def time(message):
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f"""SELECT time FROM users where id = {message.from_user.id}""")     
+            cursor.execute(f"""SELECT time FROM users where id = {message.from_user.id}""")
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             button1 = types.KeyboardButton("6 часов")
             button2 = types.KeyboardButton("10 часов")
@@ -205,7 +208,6 @@ def time(message):
 
 @bot.message_handler(commands=['days'])
 def days(message):
-
     if message.from_user.id in all_users.keys():
         all_users[message.from_user.id].days.clear()
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -221,12 +223,14 @@ def days(message):
     else:
         bot.send_message(message.chat.id, 'Вы не зарегистрированы')
 
+
 # send to user all commands he can use
 
 
 @bot.message_handler(commands=['help'])
 def helper(message):
     bot.send_message(message.chat.id, help_message, parse_mode='html')
+
 
 # adding special words to search for
 
@@ -237,12 +241,12 @@ def keyword(message):
     keyWords.append(strnew[1])
     bot.send_message(message.chat.id, f'Keyword {strnew[1]} was added', parse_mode='html')
 
+
 # all cases when user sent text message
 
 
 @bot.message_handler(content_types=['text'])
 def just_text(message):
-
     if message.text == 'Привет!':
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         button1 = types.KeyboardButton(f'Хелп')
@@ -300,6 +304,17 @@ def just_text(message):
         instruction_mes = "Кликните на команду /register."
         bot.send_message(message.chat.id, instruction_mes, parse_mode='html')
 
+    elif message.text in list_with_sked_hours.keys():
+        sked_id = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(f"""SELECT mes_id FROM skeds WHERE id = {message.from_user.id}""")
+                sked_id = cursor.fetchone()[0]
+        except Exception as ex:
+            print("[INFO] Error while working with PostgreSQL", ex)
+            hour = list_with_sked_hours.get(message.text)
+            redis.set(sked_id, hour, hour * 3600)
+
     elif message.text in list_with_hours.keys():
         with connection.cursor() as cursor:
             hour = list_with_hours.get(message.text)
@@ -335,13 +350,12 @@ def just_text(message):
                             redis.setex(message.message_id, time_t, message.from_user.id)
                             bot.send_message(message.chat.id, "Добавлен!")
                     except Exception as ex:
-                            bot.send_message(message.chat.id, f'Вы не зарегистрированы {ex}')
-                
+                        bot.send_message(message.chat.id, f'Вы не зарегистрированы {ex}')
 
-#TODO NOT TODO BUT IT'S HERE
+
+# TODO NOT TODO BUT IT'S HERE
 
 def answer():
-
     while True:
         keys = redis.keys('*')
         for i in keys:
